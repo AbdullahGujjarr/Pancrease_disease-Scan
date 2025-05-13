@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useCallback, useEffect, type ChangeEvent, type DragEvent } from 'react';
@@ -10,12 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import type { performImageAnalysis, FormState } from '@/app/actions';
+import type { performImageAnalysis, AnalysisFormState } from '@/app/actions'; // Updated import
 
 interface ImageUploadFormProps {
-  formAction: (prevState: FormState | null, formData: FormData) => Promise<FormState>;
+  formAction: (prevState: AnalysisFormState | null, formData: FormData) => Promise<AnalysisFormState>; // Updated type
   onAnalysisStart: () => void;
-  onAnalysisComplete: (data: FormState) => void;
+  onAnalysisComplete: (data: AnalysisFormState) => void; // Updated type
   allowNewUpload: boolean;
   onReset: () => void;
 }
@@ -54,7 +55,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
   const [fileError, setFileError] = useState<string | null>(null);
   const [dataUri, setDataUri] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0); // For visual feedback, not actual upload
+  const [uploadProgress, setUploadProgress] = useState(0); 
 
   const { toast } = useToast();
 
@@ -70,14 +71,14 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
           variant: 'destructive',
         });
       } else if (state.message) {
-         // Success message handled by parent page.tsx to avoid double toast
+         // Success message handled by parent page.tsx
       }
     }
   }, [state, toast, onAnalysisComplete]);
 
 
   const handleFileChange = (file: File | null) => {
-    if (allowNewUpload) return; // Don't process if results are shown and new upload is not explicitly triggered
+    if (allowNewUpload) return; 
 
     setFileError(null);
     setPreview(null);
@@ -108,7 +109,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
       reader.onloadend = () => {
         setPreview(reader.result as string);
         setDataUri(reader.result as string);
-        setUploadProgress(100); // Ensure it hits 100
+        setUploadProgress(100);
       };
       reader.onerror = () => {
         setFileError('Error reading file.');
@@ -129,7 +130,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFileChange(e.dataTransfer.files[0]);
     }
-  }, [allowNewUpload]);
+  }, [allowNewUpload]); // Added allowNewUpload to dependencies
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();

@@ -1,18 +1,21 @@
+
 'use client';
 
 import { BarChartBig, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ResponsiveContainer, BarChart, XAxis, YAxis, Tooltip, Bar, Cell } from 'recharts';
 import type { AnalyzePancreasScanOutput } from '@/ai/flows/analyze-pancreas-scan';
+import { useEffect } from 'react';
 
 interface ResultsDisplayProps {
   analysisResult: AnalyzePancreasScanOutput | null;
+  onMostLikelyDetermined?: (condition: { name: string, probability: number } | null) => void;
 }
 
 interface DiseaseData {
-  name: string;
-  displayName: string;
-  probability: number;
+  name: string; // Original key like 'pancreaticCancerProbability'
+  displayName: string; // User-friendly name like 'Pancreatic Cancer'
+  probability: number; // Percentage value
   color: string;
 }
 
@@ -23,7 +26,7 @@ const diseaseConfig: Record<keyof AnalyzePancreasScanOutput, { displayName: stri
   acutePancreatitisProbability: { displayName: 'Acute Pancreatitis', colorVariable: '--chart-4' },
 };
 
-export function ResultsDisplay({ analysisResult }: ResultsDisplayProps) {
+export function ResultsDisplay({ analysisResult, onMostLikelyDetermined }: ResultsDisplayProps) {
   if (!analysisResult) {
     return null;
   }
@@ -32,7 +35,7 @@ export function ResultsDisplay({ analysisResult }: ResultsDisplayProps) {
     .map(([key, probability]) => {
       const config = diseaseConfig[key as keyof AnalyzePancreasScanOutput];
       return {
-        name: key,
+        name: key, // Keep original key
         displayName: config.displayName,
         probability: Number(probability) * 100, // Convert to percentage
         color: `hsl(var(${config.colorVariable}))`,
@@ -43,6 +46,19 @@ export function ResultsDisplay({ analysisResult }: ResultsDisplayProps) {
   const sortedForMinMax = [...diseaseProbabilities].sort((a, b) => a.probability - b.probability);
   const leastLikely = sortedForMinMax[0];
   const mostLikely = sortedForMinMax[sortedForMinMax.length - 1];
+  
+  const hasSignificantFinding = mostLikely.probability > 50;
+
+  useEffect(() => {
+    if (onMostLikelyDetermined) {
+        if (hasSignificantFinding) {
+            onMostLikelyDetermined({ name: mostLikely.displayName, probability: mostLikely.probability});
+        } else {
+            onMostLikelyDetermined(null);
+        }
+    }
+  }, [hasSignificantFinding, mostLikely, onMostLikelyDetermined]);
+
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -55,8 +71,6 @@ export function ResultsDisplay({ analysisResult }: ResultsDisplayProps) {
     return null;
   };
   
-  const hasSignificantFinding = diseaseProbabilities.some(d => d.probability > 50);
-
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl mt-8">
       <CardHeader>
@@ -77,7 +91,7 @@ export function ResultsDisplay({ analysisResult }: ResultsDisplayProps) {
               <BarChart data={diseaseProbabilities} margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
                 <XAxis 
                   dataKey="displayName" 
-                  tickFormatter={(value) => value.split(' ').map((s: string) => s.substring(0,3)).join(' ')} // Abbreviate for space
+                  tickFormatter={(value) => value.split(' ').map((s: string) => s.substring(0,3)).join(' ')} 
                   angle={-15}
                   textAnchor="end"
                   height={50}
@@ -129,7 +143,7 @@ export function ResultsDisplay({ analysisResult }: ResultsDisplayProps) {
           </Card>
         </div>
         
-        {hasSignificantFinding && mostLikely.probability > 50 && (
+        {hasSignificantFinding && (
            <div className="flex items-start p-4 text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 rounded-md border border-amber-300 dark:border-amber-700">
               <AlertTriangle className="w-6 h-6 mr-3 shrink-0 mt-0.5 text-amber-500 dark:text-amber-400" />
               <div>
@@ -146,3 +160,4 @@ export function ResultsDisplay({ analysisResult }: ResultsDisplayProps) {
     </Card>
   );
 }
+

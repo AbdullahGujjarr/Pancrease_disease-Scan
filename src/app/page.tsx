@@ -1,21 +1,25 @@
+
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
 import { ImageUploadForm } from '@/components/image-upload-form';
 import { ResultsDisplay } from '@/components/results-display';
-import { performImageAnalysis, type FormState } from '@/app/actions';
+import { performImageAnalysis, type AnalysisFormState } from '@/app/actions';
 import type { AnalyzePancreasScanOutput } from '@/ai/flows/analyze-pancreas-scan';
 import { useToast } from "@/hooks/use-toast";
 import { Button } from '@/components/ui/button';
-import { RefreshCcw } from 'lucide-react';
+import { RefreshCcw, Download } from 'lucide-react';
+import { generateReportPDF } from '@/lib/pdf-utils';
+import { Chatbot } from '@/components/chatbot'; // Import Chatbot
 
 export default function PancreasVisionPage() {
   const [analysisResult, setAnalysisResult] = useState<AnalyzePancreasScanOutput | null>(null);
   const [currentError, setCurrentError] = useState<string | null>(null);
-  // 'upload', 'analyzing', 'results'
   const [appState, setAppState] = useState<'upload' | 'analyzing' | 'results'>('upload');
+  const [mostLikelyForPdf, setMostLikelyForPdf] = useState<{name: string, probability: number} | null>(null);
+
 
   const { toast } = useToast();
 
@@ -25,24 +29,22 @@ export default function PancreasVisionPage() {
     setCurrentError(null);
   };
 
-  const handleAnalysisComplete = (formState: FormState) => {
+  const handleAnalysisComplete = (formState: AnalysisFormState) => {
     if (formState.data) {
       setAnalysisResult(formState.data);
       setCurrentError(null);
       setAppState('results');
-      if (formState.message) { // Show success message only if no error previously shown by form
+      if (formState.message) {
         toast({
           title: 'Analysis Complete',
           description: formState.message,
         });
       }
     } else if (formState.error) {
-      // Error is toasted by ImageUploadForm, just update state here
       setCurrentError(formState.error);
       setAnalysisResult(null);
-      setAppState('upload'); // Revert to upload state on error, allowing re-try
+      setAppState('upload'); 
     } else {
-      // This case should ideally not happen if formState is always populated correctly
       setAppState('upload');
     }
   };
@@ -51,13 +53,22 @@ export default function PancreasVisionPage() {
     setAnalysisResult(null);
     setCurrentError(null);
     setAppState('upload');
+    setMostLikelyForPdf(null);
   };
+
+  const handleDownloadPdf = useCallback(() => {
+    if (analysisResult) {
+      generateReportPDF(analysisResult, mostLikelyForPdf);
+      toast({
+        title: "Report Downloaded",
+        description: "Your PDF report has started downloading.",
+      });
+    }
+  }, [analysisResult, mostLikelyForPdf, toast]);
   
-  // Effect to handle error display from currentError state if needed for page-level display
   useEffect(() => {
-    if (currentError && appState === 'upload') { // Only show if returning to upload state after an error
+    if (currentError && appState === 'upload') {
       // Toasting is handled within ImageUploadForm for form-specific errors.
-      // Page-level errors could be handled here if they weren't form-related.
     }
   }, [currentError, appState, toast]);
 
@@ -81,18 +92,25 @@ export default function PancreasVisionPage() {
             formAction={performImageAnalysis}
             onAnalysisStart={handleAnalysisStart}
             onAnalysisComplete={handleAnalysisComplete}
-            allowNewUpload={false} // This will be false when not in 'results' state
-            onReset={() => {}} // Reset not directly used here as form is always for new upload unless in 'results'
+            allowNewUpload={false} 
+            onReset={() => {}} 
           />
         )}
         
         {appState === 'results' && analysisResult && (
           <>
-            <ResultsDisplay analysisResult={analysisResult} />
-            <div className="mt-8 text-center">
+            <ResultsDisplay 
+              analysisResult={analysisResult} 
+              onMostLikelyDetermined={(condition) => setMostLikelyForPdf(condition)}
+            />
+            <div className="mt-8 text-center flex flex-col sm:flex-row justify-center items-center gap-4">
               <Button onClick={handleReset} variant="outline" size="lg" className="bg-accent text-accent-foreground hover:bg-accent/90">
                 <RefreshCcw className="mr-2 h-5 w-5" />
                 Analyze Another Scan
+              </Button>
+              <Button onClick={handleDownloadPdf} variant="default" size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90">
+                <Download className="mr-2 h-5 w-5" />
+                Download PDF Report
               </Button>
             </div>
           </>
@@ -109,6 +127,8 @@ export default function PancreasVisionPage() {
             </div>
           </div>
         )}
+
+        <Chatbot /> {/* Add Chatbot component here */}
 
       </main>
       <Footer />
