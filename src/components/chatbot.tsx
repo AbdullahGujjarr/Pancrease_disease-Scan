@@ -25,7 +25,7 @@ const quickQuestions = [
 ];
 
 function ChatSubmitButton() {
-  const { pending } = useFormStatus(); // Correctly scoped for the form
+  const { pending } = useFormStatus();
   return (
     <Button 
       type="submit" 
@@ -44,7 +44,7 @@ function ChatSubmitButton() {
 export function Chatbot() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentQuery, setCurrentQuery] = useState('');
-  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null); // For displaying pending user message
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
   const { toast } = useToast();
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -56,40 +56,78 @@ export function Chatbot() {
   });
   
   useEffect(() => {
-    // Add user message from completed action to history
-    if (state?.userQuery && !isChatPending) { 
-        if (chatHistory.length === 0 || chatHistory[chatHistory.length -1].content !== state.userQuery || chatHistory[chatHistory.length -1].role !== 'user') {
-             setChatHistory(prev => [...prev, { role: 'user', content: state.userQuery as string }]);
-        }
+    // This effect handles the result of the form action from useActionState
+    if (isChatPending) {
+      // Action is pending. `submittedQuery` should have been set by the submit handler
+      // to show a visual pending state for the user's message.
+      return;
     }
+  
+    // Action has completed (isChatPending is false).
+    // `state` now holds the result of the action.
+  
+    let newMessagesStaged: ChatMessage[] = [];
+  
+    // 1. Process the user's query from the completed action
+    if (state?.userQuery && (state.response || state.error)) { // Ensure this query was part of the action that completed
+      const lastMessageInHistory = chatHistory[chatHistory.length - 1];
+      // Add user query if it's not already the very last message and a 'user' message
+      if (!(lastMessageInHistory?.role === 'user' && lastMessageInHistory?.content === state.userQuery)) {
+        newMessagesStaged.push({ role: 'user', content: state.userQuery });
+      }
+    }
+  
+    // 2. Process the assistant's response
+    if (state?.response) {
+      // Check against the true last message (either from history or the user message just staged)
+      const lastEffectiveMessage = newMessagesStaged.length > 0
+        ? newMessagesStaged[newMessagesStaged.length - 1]
+        : chatHistory[chatHistory.length - 1];
+      
+      // Add assistant response if it's not already the very last message and an 'assistant' message
+      if (!(lastEffectiveMessage?.role === 'assistant' && lastEffectiveMessage?.content === state.response)) {
+        newMessagesStaged.push({ role: 'assistant', content: state.response });
+      }
+    }
+  
+    // 3. Batch update chatHistory if new messages were staged
+    if (newMessagesStaged.length > 0) {
+      setChatHistory(prevChatHistory => [...prevChatHistory, ...newMessagesStaged]);
+      // If an assistant response was part of the staged messages, clear the input field.
+      if (newMessagesStaged.some(msg => msg.role === 'assistant' && msg.content === state?.response)) {
+        setCurrentQuery('');
+      }
+    }
+  
+    // 4. Handle and display any errors from the action
+    if (state?.error) {
+      toast({
+        title: 'Chatbot Error',
+        description: state.error,
+        variant: 'destructive',
+      });
+    }
+  
+    // 5. Clear the `submittedQuery` (which is used to visually show the user's message in a pending state)
+    //    as the action is no longer pending.
+    setSubmittedQuery(null);
+  
+  }, [state, isChatPending, toast]); // IMPORTANT: chatHistory is NOT a dependency here to prevent loops.
+                                     // setCurrentQuery is also removed as it's handled conditionally.
 
-    // Add assistant response or handle error
-    if (!isChatPending) {
-      if (state?.response) {
-        setChatHistory(prev => [...prev, { role: 'assistant', content: state.response as string }]);
-        setCurrentQuery(''); 
-      }
-      if (state?.error) {
-        toast({
-          title: 'Chatbot Error',
-          description: state.error,
-          variant: 'destructive',
-        });
-      }
-      setSubmittedQuery(null); // Clear submitted query once action is no longer pending
-    }
-  }, [state, isChatPending, toast]); // Removed chatHistory from deps to avoid potential loops with setChatHistory
 
   useEffect(() => {
+    // This effect is solely for scrolling the chat container when chatHistory updates.
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [chatHistory]);
+  }, [chatHistory]); // Only depends on chatHistory.
 
   const commonSubmitLogic = (query: string) => {
     if (!query.trim() || isChatPending) return;
     
-    setSubmittedQuery(query); // Set query that is being processed
+    setSubmittedQuery(query); // Display this query as pending
+    setCurrentQuery(''); // Clear input field immediately after submission attempt
 
     const formData = new FormData();
     formData.append('query', query);
@@ -111,7 +149,6 @@ export function Chatbot() {
   };
   
   const handleQuickQuestion = (question: string) => {
-    // setCurrentQuery(question); // Set currentQuery for input field, but submit the question directly
     commonSubmitLogic(question);
   };
 
@@ -181,7 +218,7 @@ export function Chatbot() {
 
         <form onSubmit={handleSubmit} ref={formRef} className="flex items-center gap-2 pt-4">
           <Input
-            name="query"
+            name="query" // Name attribute is good for non-JS form submission, but here we control it.
             placeholder="Type your question..."
             value={currentQuery}
             onChange={(e) => setCurrentQuery(e.target.value)}
