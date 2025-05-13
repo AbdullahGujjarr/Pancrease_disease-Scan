@@ -8,10 +8,15 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Bot, Loader2, Send, Sparkles, User } from 'lucide-react';
-import { useEffect, useRef, useState, type FormEvent, useActionState } from 'react'; 
+import { useEffect, useRef, useState, type FormEvent } from 'react'; 
 import { useFormStatus } from 'react-dom';
+import { useActionState } from 'react'; // Correct import for React.useActionState
+
+// Helper to generate simple unique IDs
+const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 
 interface ChatMessage {
+  id: string; // Added unique ID
   role: 'user' | 'assistant' | 'system';
   content: string;
 }
@@ -44,92 +49,81 @@ function ChatSubmitButton() {
 export function Chatbot() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentQuery, setCurrentQuery] = useState('');
-  // submittedQuery is used for optimistic UI: shows the user's message as pending
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null); 
   const { toast } = useToast();
-  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [state, formAction, isChatPending] = useActionState(askPancreasAssistantAction, { 
-    response: null,
-    error: null,
-    userQuery: null,
-  });
+  const initialChatbotState: ChatbotFormState = { response: null, error: null, userQuery: null };
+  const [state, formAction, isChatPending] = useActionState(askPancreasAssistantAction, initialChatbotState);
   
-  // Effect for scrolling chat to bottom when chatHistory changes
   useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    if (scrollAreaRef.current) {
+      const viewport = scrollAreaRef.current.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
     }
   }, [chatHistory]);
 
-  // Effect for handling results from the AI action
   useEffect(() => {
     if (isChatPending) {
-      // Action is in flight. Optimistic UI is handled by `submittedQuery`.
       return;
     }
 
-    // Action has completed.
     const userQueryFromAction = state?.userQuery;
     const assistantResponse = state?.response;
     const actionError = state?.error;
 
-    // Process the result only if it corresponds to the query we optimistically displayed
-    if (submittedQuery && userQueryFromAction === submittedQuery) {
-      const newMessages: ChatMessage[] = [];
-      // Add the user's confirmed message
-      newMessages.push({ role: 'user', content: userQueryFromAction });
-      
-      if (assistantResponse) {
-        // Add the assistant's response
-        newMessages.push({ role: 'assistant', content: assistantResponse });
-      }
-      
-      setChatHistory((prevHistory) => [...prevHistory, ...newMessages]);
-      setSubmittedQuery(null); // Clear the optimistic message, as it's now committed
-    } else if (submittedQuery && actionError && userQueryFromAction === submittedQuery) {
-      // Error specifically for the submitted query
-      toast({
-        title: 'Chatbot Error',
-        description: actionError,
-        variant: 'destructive',
-      });
-      setSubmittedQuery(null); // Clear the optimistic message even on error for it
-    } else if (actionError && !userQueryFromAction) {
-      // Generic error not tied to a specific echoed user query from the action
-      toast({
-        title: 'Chatbot Error',
-        description: actionError,
-        variant: 'destructive',
-      });
-      if (submittedQuery) {
-        // If there was a pending optimistic message, clear it as the action failed.
+    // Ensure state is not the initial default state before processing
+    if (state && (state.response || state.error || state.userQuery !== initialChatbotState.userQuery )) {
+      if (submittedQuery && userQueryFromAction === submittedQuery) {
+        const newMessages: ChatMessage[] = [];
+        newMessages.push({ id: generateId(), role: 'user', content: userQueryFromAction });
+        
+        if (assistantResponse) {
+          newMessages.push({ id: generateId(), role: 'assistant', content: assistantResponse });
+        }
+        
+        setChatHistory((prevHistory) => [...prevHistory, ...newMessages]);
         setSubmittedQuery(null);
-      }
-    } else if (actionError) {
-        // Fallback for other errors that might have userQueryFromAction
-         toast({
+      } else if (submittedQuery && actionError && userQueryFromAction === submittedQuery) {
+        toast({
+          title: 'Chatbot Error',
+          description: actionError,
+          variant: 'destructive',
+        });
+        setSubmittedQuery(null);
+      } else if (actionError && !userQueryFromAction) { 
+        // This handles generic errors not tied to a specific submittedQuery that matches.
+        // Only toast if there's an actual error message.
+        toast({
             title: 'Chatbot Error',
-            description: actionError,
+            description: actionError, // actionError is already checked to be non-null
             variant: 'destructive',
         });
-        if (submittedQuery && userQueryFromAction === submittedQuery) {
-            setSubmittedQuery(null);
+        if (submittedQuery) { 
+          setSubmittedQuery(null);
         }
+      } else if (actionError && userQueryFromAction && submittedQuery && userQueryFromAction !== submittedQuery) {
+        // Error for a different query than optimistically shown.
+        toast({
+          title: 'Chatbot Error',
+          description: `An error occurred: ${actionError}. Your previous query '${submittedQuery}' might not have completed.`,
+          variant: 'destructive',
+        });
+        setSubmittedQuery(null);
+      }
     }
-
-  // Dependencies: `state` (action result), `isChatPending`, `toast` (stable), 
-  // `submittedQuery` (to link action result to optimistic UI).
-  // `setChatHistory` and `setSubmittedQuery` are stable setters from useState.
-  }, [state, isChatPending, toast, submittedQuery]);
+  }, [state, isChatPending, toast, submittedQuery, setChatHistory, setSubmittedQuery, initialChatbotState.userQuery]);
 
 
   const commonSubmitLogic = (query: string) => {
-    if (!query.trim() || isChatPending) return;
+    // Block if query is empty, an action is pending, or another query is already optimistically submitted
+    if (!query.trim() || isChatPending || submittedQuery) return; 
     
-    setSubmittedQuery(query); // Optimistically show user's query as pending
-    setCurrentQuery('');     // Clear input field immediately
+    setSubmittedQuery(query); 
+    setCurrentQuery('');     
 
     const formData = new FormData();
     formData.append('query', query);
@@ -142,7 +136,7 @@ export function Chatbot() {
       }));
 
     formData.append('chatHistory', JSON.stringify(flowHistory));
-    formAction(formData); // Dispatch the server action
+    formAction(formData); 
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -168,21 +162,21 @@ export function Chatbot() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <ScrollArea className="h-[300px] w-full border rounded-md p-4 space-y-4" ref={chatContainerRef}>
+        <ScrollArea className="h-[300px] w-full border rounded-md p-4" ref={scrollAreaRef}>
           {chatHistory.length === 0 && !isChatPending && !submittedQuery && (
             <div className="flex flex-col items-center justify-center h-full">
               <Sparkles className="w-12 h-12 text-muted-foreground mb-2" />
               <p className="text-muted-foreground">Ask me anything about pancreas health!</p>
             </div>
           )}
-          {chatHistory.map((msg, index) => (
+          {chatHistory.map((msg) => (
             <div
-              key={index}
-              className={`flex items-end gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              key={msg.id} 
+              className={`flex items-end gap-2 mb-2 last:mb-0 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {msg.role === 'assistant' && <Bot className="w-6 h-6 text-primary self-start shrink-0" />}
               <div
-                className={`max-w-[75%] rounded-lg px-4 py-2 text-sm whitespace-pre-wrap
+                className={`max-w-[75%] rounded-lg px-4 py-2 text-sm whitespace-pre-wrap break-words
                   ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
               >
                 {msg.content}
@@ -190,10 +184,9 @@ export function Chatbot() {
               {msg.role === 'user' && <User className="w-6 h-6 text-muted-foreground self-start shrink-0" />}
             </div>
           ))}
-           {/* Optimistic UI for pending user message */}
            {isChatPending && submittedQuery && ( 
-             <div className="flex items-end gap-2 justify-end">
-                <div className="max-w-[75%] rounded-lg px-4 py-2 text-sm bg-primary text-primary-foreground opacity-70">
+             <div key="optimistic-user-query" className="flex items-end gap-2 justify-end mb-2">
+                <div className="max-w-[75%] rounded-lg px-4 py-2 text-sm bg-primary text-primary-foreground opacity-70 whitespace-pre-wrap break-words">
                     {submittedQuery}
                 </div>
                 <User className="w-6 h-6 text-muted-foreground self-start shrink-0" />
@@ -210,7 +203,7 @@ export function Chatbot() {
                       variant="outline" 
                       size="sm" 
                       onClick={() => handleQuickQuestion(q)} 
-                      disabled={isChatPending || !!submittedQuery} // Disable if any query is pending
+                      disabled={isChatPending || !!submittedQuery} 
                       suppressHydrationWarning 
                     >
                         {q}
@@ -226,13 +219,14 @@ export function Chatbot() {
             value={currentQuery}
             onChange={(e) => setCurrentQuery(e.target.value)}
             className="flex-grow"
-            disabled={isChatPending || !!submittedQuery} // Disable if any query is pending
+            disabled={isChatPending || !!submittedQuery} 
             autoComplete="off"
             suppressHydrationWarning 
           />
-          <ChatSubmitButton /> {/* Already has suppressHydrationWarning */}
+          <ChatSubmitButton />
         </form>
       </CardContent>
     </Card>
   );
 }
+
