@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { PancreasAssistantInput } from '@/ai/flows/pancreas-chat-flow';
@@ -9,8 +8,8 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Bot, Loader2, Send, Sparkles, User } from 'lucide-react';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useEffect, useRef, useState, type FormEvent, useActionState } from 'react'; // Updated import
+import { useFormStatus } from 'react-dom';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -43,7 +42,7 @@ export function Chatbot() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [state, formAction] = useFormState(askPancreasAssistantAction, {
+  const [state, formAction] = useActionState(askPancreasAssistantAction, { // Updated to useActionState
     response: null,
     error: null,
     userQuery: null,
@@ -63,7 +62,7 @@ export function Chatbot() {
       setChatHistory(prev => [...prev, { role: 'assistant', content: state.response as string }]);
       // Reset form state by clearing userQuery after processing response.
       // This prevents re-adding user message on next interaction if state.userQuery isn't cleared.
-      // However, useFormState is tricky. Better to clear currentQuery.
+      // However, useActionState is tricky. Better to clear currentQuery.
       setCurrentQuery(''); 
     }
     if (state?.error) {
@@ -196,4 +195,3 @@ export function Chatbot() {
     </Card>
   );
 }
-

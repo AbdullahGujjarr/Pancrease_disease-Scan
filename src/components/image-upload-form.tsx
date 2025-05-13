@@ -1,8 +1,8 @@
-
 'use client';
 
 import { useState, useCallback, useEffect, type ChangeEvent, type DragEvent } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react'; // Updated import
+import { useFormStatus } from 'react-dom';
 import Image from 'next/image';
 import { UploadCloud, FileImage, XCircle, Loader2, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,12 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import type { performImageAnalysis, AnalysisFormState } from '@/app/actions'; // Updated import
+import type { performImageAnalysis, AnalysisFormState } from '@/app/actions'; 
 
 interface ImageUploadFormProps {
-  formAction: (prevState: AnalysisFormState | null, formData: FormData) => Promise<AnalysisFormState>; // Updated type
+  formAction: (prevState: AnalysisFormState | null, formData: FormData) => Promise<AnalysisFormState>; 
   onAnalysisStart: () => void;
-  onAnalysisComplete: (data: AnalysisFormState) => void; // Updated type
+  onAnalysisComplete: (data: AnalysisFormState) => void; 
   allowNewUpload: boolean;
   onReset: () => void;
 }
@@ -59,7 +59,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
 
   const { toast } = useToast();
 
-  const [state, dispatch] = useFormState(formAction, null);
+  const [state, dispatch] = useActionState(formAction, null); // Updated to useActionState
 
   useEffect(() => {
     if (state) {
