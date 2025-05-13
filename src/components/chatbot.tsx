@@ -25,14 +25,14 @@ const quickQuestions = [
 ];
 
 function ChatSubmitButton() {
-  const { pending } = useFormStatus();
+  const { pending } = useFormStatus(); // Correctly scoped for the form
   return (
     <Button 
       type="submit" 
       size="icon" 
       disabled={pending} 
       className="bg-primary hover:bg-primary/90 text-primary-foreground"
-      suppressHydrationWarning // Added to prevent hydration mismatch
+      suppressHydrationWarning
     >
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
       <span className="sr-only">Send message</span>
@@ -44,37 +44,41 @@ function ChatSubmitButton() {
 export function Chatbot() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentQuery, setCurrentQuery] = useState('');
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null); // For displaying pending user message
   const { toast } = useToast();
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [state, formAction] = useActionState(askPancreasAssistantAction, { 
+  const [state, formAction, isChatPending] = useActionState(askPancreasAssistantAction, { 
     response: null,
     error: null,
     userQuery: null,
   });
   
-  const { pending } = useFormStatus(); // This needs to be used inside a component that's a child of a form
-
   useEffect(() => {
-    if (state?.userQuery && !pending) { 
+    // Add user message from completed action to history
+    if (state?.userQuery && !isChatPending) { 
         if (chatHistory.length === 0 || chatHistory[chatHistory.length -1].content !== state.userQuery || chatHistory[chatHistory.length -1].role !== 'user') {
              setChatHistory(prev => [...prev, { role: 'user', content: state.userQuery as string }]);
         }
     }
 
-    if (state?.response) {
-      setChatHistory(prev => [...prev, { role: 'assistant', content: state.response as string }]);
-      setCurrentQuery(''); 
+    // Add assistant response or handle error
+    if (!isChatPending) {
+      if (state?.response) {
+        setChatHistory(prev => [...prev, { role: 'assistant', content: state.response as string }]);
+        setCurrentQuery(''); 
+      }
+      if (state?.error) {
+        toast({
+          title: 'Chatbot Error',
+          description: state.error,
+          variant: 'destructive',
+        });
+      }
+      setSubmittedQuery(null); // Clear submitted query once action is no longer pending
     }
-    if (state?.error) {
-      toast({
-        title: 'Chatbot Error',
-        description: state.error,
-        variant: 'destructive',
-      });
-    }
-  }, [state, pending, toast, chatHistory]); // Added toast and chatHistory to dependency array for correctness
+  }, [state, isChatPending, toast]); // Removed chatHistory from deps to avoid potential loops with setChatHistory
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -82,11 +86,13 @@ export function Chatbot() {
     }
   }, [chatHistory]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!currentQuery.trim() || pending) return;
+  const commonSubmitLogic = (query: string) => {
+    if (!query.trim() || isChatPending) return;
+    
+    setSubmittedQuery(query); // Set query that is being processed
 
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData();
+    formData.append('query', query);
     
     const flowHistory: PancreasAssistantInput['chatHistory'] = chatHistory
       .filter(msg => msg.role === 'user' || msg.role === 'assistant') 
@@ -98,23 +104,15 @@ export function Chatbot() {
     formData.append('chatHistory', JSON.stringify(flowHistory));
     formAction(formData);
   };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    commonSubmitLogic(currentQuery);
+  };
   
   const handleQuickQuestion = (question: string) => {
-    if (pending) return;
-    setCurrentQuery(question);
-    
-    const formData = new FormData();
-    formData.append('query', question);
-
-    const flowHistory: PancreasAssistantInput['chatHistory'] = chatHistory
-        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-        .map(msg => ({
-            role: msg.role === 'user' ? 'user' : 'model',
-            parts: [{ text: msg.content }]
-        }));
-    formData.append('chatHistory', JSON.stringify(flowHistory));
-    
-    formAction(formData);
+    // setCurrentQuery(question); // Set currentQuery for input field, but submit the question directly
+    commonSubmitLogic(question);
   };
 
 
@@ -132,7 +130,7 @@ export function Chatbot() {
       </CardHeader>
       <CardContent className="space-y-4">
         <ScrollArea className="h-[300px] w-full border rounded-md p-4 space-y-4" ref={chatContainerRef}>
-          {chatHistory.length === 0 && (
+          {chatHistory.length === 0 && !isChatPending && !submittedQuery && (
             <div className="flex flex-col items-center justify-center h-full">
               <Sparkles className="w-12 h-12 text-muted-foreground mb-2" />
               <p className="text-muted-foreground">Ask me anything about pancreas health!</p>
@@ -153,10 +151,10 @@ export function Chatbot() {
               {msg.role === 'user' && <User className="w-6 h-6 text-muted-foreground self-start shrink-0" />}
             </div>
           ))}
-           {pending && state?.userQuery && ( 
+           {isChatPending && submittedQuery && ( 
              <div className="flex items-end gap-2 justify-end">
                 <div className="max-w-[75%] rounded-lg px-4 py-2 text-sm bg-primary text-primary-foreground opacity-70">
-                    {state.userQuery}
+                    {submittedQuery}
                 </div>
                 <User className="w-6 h-6 text-muted-foreground self-start shrink-0" />
             </div>
@@ -172,8 +170,8 @@ export function Chatbot() {
                       variant="outline" 
                       size="sm" 
                       onClick={() => handleQuickQuestion(q)} 
-                      disabled={pending}
-                      suppressHydrationWarning // Added to prevent hydration mismatch
+                      disabled={isChatPending}
+                      suppressHydrationWarning 
                     >
                         {q}
                     </Button>
@@ -188,9 +186,9 @@ export function Chatbot() {
             value={currentQuery}
             onChange={(e) => setCurrentQuery(e.target.value)}
             className="flex-grow"
-            disabled={pending}
+            disabled={isChatPending}
             autoComplete="off"
-            suppressHydrationWarning // Added to prevent hydration mismatch
+            suppressHydrationWarning 
           />
           <ChatSubmitButton />
         </form>

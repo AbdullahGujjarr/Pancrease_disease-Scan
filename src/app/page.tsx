@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -10,9 +9,11 @@ import { performImageAnalysis, type AnalysisFormState } from '@/app/actions';
 import type { AnalyzePancreasScanOutput } from '@/ai/flows/analyze-pancreas-scan';
 import { useToast } from "@/hooks/use-toast";
 import { Button } from '@/components/ui/button';
-import { RefreshCcw, Download } from 'lucide-react';
+import { RefreshCcw, Download, AlertTriangle } from 'lucide-react';
 import { generateReportPDF } from '@/lib/pdf-utils';
-import { Chatbot } from '@/components/chatbot'; // Import Chatbot
+import { Chatbot } from '@/components/chatbot'; 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
 
 export default function PancreasVisionPage() {
   const [analysisResult, setAnalysisResult] = useState<AnalyzePancreasScanOutput | null>(null);
@@ -44,8 +45,27 @@ export default function PancreasVisionPage() {
       setCurrentError(formState.error);
       setAnalysisResult(null);
       setAppState('upload'); 
+      // Toasting for form-specific errors is handled in ImageUploadForm
+      // For more general errors, a persistent Alert might be better (added below)
+    } else if (formState.message) {
+      // Case: No data, no error, but a message (e.g., informational)
+      setAnalysisResult(null);
+      setCurrentError(null); // Clear any previous error
+      setAppState('upload'); // Revert to upload state, as there's no data to display as "results"
+      toast({
+        title: 'Analysis Information',
+        description: formState.message,
+      });
     } else {
+      // Fallback for unexpected state from action
+      setCurrentError('The analysis completed with an unknown status. Please try again.');
+      setAnalysisResult(null);
       setAppState('upload');
+       toast({
+        title: 'Analysis Incomplete',
+        description: 'The analysis did not return a clear result or data.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -66,12 +86,6 @@ export default function PancreasVisionPage() {
     }
   }, [analysisResult, mostLikelyForPdf, toast]);
   
-  useEffect(() => {
-    if (currentError && appState === 'upload') {
-      // Toasting is handled within ImageUploadForm for form-specific errors.
-    }
-  }, [currentError, appState, toast]);
-
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -87,13 +101,21 @@ export default function PancreasVisionPage() {
           </p>
         </section>
 
+        {appState === 'upload' && currentError && (
+          <Alert variant="destructive" className="my-6 max-w-lg mx-auto shadow-md">
+            <AlertTriangle className="h-5 w-5" />
+            <AlertTitle>Analysis Failed</AlertTitle>
+            <AlertDescription>{currentError}</AlertDescription>
+          </Alert>
+        )}
+
         {appState !== 'results' && (
            <ImageUploadForm
             formAction={performImageAnalysis}
             onAnalysisStart={handleAnalysisStart}
             onAnalysisComplete={handleAnalysisComplete}
             allowNewUpload={false} 
-            onReset={() => {}} 
+            onReset={handleReset} // Pass handleReset for consistency, though not used by this specific form's button
           />
         )}
         
@@ -115,7 +137,7 @@ export default function PancreasVisionPage() {
             </div>
           </>
         )}
-         {appState === 'analyzing' && !analysisResult && (
+         {appState === 'analyzing' && (
           <div className="text-center py-10">
             <div role="status" className="flex flex-col items-center">
                 <svg aria-hidden="true" className="w-12 h-12 text-muted-foreground animate-spin dark:text-gray-600 fill-primary" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -128,7 +150,7 @@ export default function PancreasVisionPage() {
           </div>
         )}
 
-        <Chatbot /> {/* Add Chatbot component here */}
+        <Chatbot /> 
 
       </main>
       <Footer />
