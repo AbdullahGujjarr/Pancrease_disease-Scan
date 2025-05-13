@@ -44,7 +44,8 @@ function ChatSubmitButton() {
 export function Chatbot() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentQuery, setCurrentQuery] = useState('');
-  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
+  // submittedQuery is used for optimistic UI: shows the user's message as pending
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null); 
   const { toast } = useToast();
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -55,79 +56,80 @@ export function Chatbot() {
     userQuery: null,
   });
   
+  // Effect for scrolling chat to bottom when chatHistory changes
   useEffect(() => {
-    // This effect handles the result of the form action from useActionState
-    if (isChatPending) {
-      // Action is pending. `submittedQuery` should have been set by the submit handler
-      // to show a visual pending state for the user's message.
-      return;
-    }
-  
-    // Action has completed (isChatPending is false).
-    // `state` now holds the result of the action.
-  
-    let newMessagesStaged: ChatMessage[] = [];
-  
-    // 1. Process the user's query from the completed action
-    if (state?.userQuery && (state.response || state.error)) { // Ensure this query was part of the action that completed
-      const lastMessageInHistory = chatHistory[chatHistory.length - 1];
-      // Add user query if it's not already the very last message and a 'user' message
-      if (!(lastMessageInHistory?.role === 'user' && lastMessageInHistory?.content === state.userQuery)) {
-        newMessagesStaged.push({ role: 'user', content: state.userQuery });
-      }
-    }
-  
-    // 2. Process the assistant's response
-    if (state?.response) {
-      // Check against the true last message (either from history or the user message just staged)
-      const lastEffectiveMessage = newMessagesStaged.length > 0
-        ? newMessagesStaged[newMessagesStaged.length - 1]
-        : chatHistory[chatHistory.length - 1];
-      
-      // Add assistant response if it's not already the very last message and an 'assistant' message
-      if (!(lastEffectiveMessage?.role === 'assistant' && lastEffectiveMessage?.content === state.response)) {
-        newMessagesStaged.push({ role: 'assistant', content: state.response });
-      }
-    }
-  
-    // 3. Batch update chatHistory if new messages were staged
-    if (newMessagesStaged.length > 0) {
-      setChatHistory(prevChatHistory => [...prevChatHistory, ...newMessagesStaged]);
-      // If an assistant response was part of the staged messages, clear the input field.
-      if (newMessagesStaged.some(msg => msg.role === 'assistant' && msg.content === state?.response)) {
-        setCurrentQuery('');
-      }
-    }
-  
-    // 4. Handle and display any errors from the action
-    if (state?.error) {
-      toast({
-        title: 'Chatbot Error',
-        description: state.error,
-        variant: 'destructive',
-      });
-    }
-  
-    // 5. Clear the `submittedQuery` (which is used to visually show the user's message in a pending state)
-    //    as the action is no longer pending.
-    setSubmittedQuery(null);
-  
-  }, [state, isChatPending, toast]); // IMPORTANT: chatHistory is NOT a dependency here to prevent loops.
-                                     // setCurrentQuery is also removed as it's handled conditionally.
-
-
-  useEffect(() => {
-    // This effect is solely for scrolling the chat container when chatHistory updates.
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [chatHistory]); // Only depends on chatHistory.
+  }, [chatHistory]);
+
+  // Effect for handling results from the AI action
+  useEffect(() => {
+    if (isChatPending) {
+      // Action is in flight. Optimistic UI is handled by `submittedQuery`.
+      return;
+    }
+
+    // Action has completed.
+    const userQueryFromAction = state?.userQuery;
+    const assistantResponse = state?.response;
+    const actionError = state?.error;
+
+    // Process the result only if it corresponds to the query we optimistically displayed
+    if (submittedQuery && userQueryFromAction === submittedQuery) {
+      const newMessages: ChatMessage[] = [];
+      // Add the user's confirmed message
+      newMessages.push({ role: 'user', content: userQueryFromAction });
+      
+      if (assistantResponse) {
+        // Add the assistant's response
+        newMessages.push({ role: 'assistant', content: assistantResponse });
+      }
+      
+      setChatHistory((prevHistory) => [...prevHistory, ...newMessages]);
+      setSubmittedQuery(null); // Clear the optimistic message, as it's now committed
+    } else if (submittedQuery && actionError && userQueryFromAction === submittedQuery) {
+      // Error specifically for the submitted query
+      toast({
+        title: 'Chatbot Error',
+        description: actionError,
+        variant: 'destructive',
+      });
+      setSubmittedQuery(null); // Clear the optimistic message even on error for it
+    } else if (actionError && !userQueryFromAction) {
+      // Generic error not tied to a specific echoed user query from the action
+      toast({
+        title: 'Chatbot Error',
+        description: actionError,
+        variant: 'destructive',
+      });
+      if (submittedQuery) {
+        // If there was a pending optimistic message, clear it as the action failed.
+        setSubmittedQuery(null);
+      }
+    } else if (actionError) {
+        // Fallback for other errors that might have userQueryFromAction
+         toast({
+            title: 'Chatbot Error',
+            description: actionError,
+            variant: 'destructive',
+        });
+        if (submittedQuery && userQueryFromAction === submittedQuery) {
+            setSubmittedQuery(null);
+        }
+    }
+
+  // Dependencies: `state` (action result), `isChatPending`, `toast` (stable), 
+  // `submittedQuery` (to link action result to optimistic UI).
+  // `setChatHistory` and `setSubmittedQuery` are stable setters from useState.
+  }, [state, isChatPending, toast, submittedQuery]);
+
 
   const commonSubmitLogic = (query: string) => {
     if (!query.trim() || isChatPending) return;
     
-    setSubmittedQuery(query); // Display this query as pending
-    setCurrentQuery(''); // Clear input field immediately after submission attempt
+    setSubmittedQuery(query); // Optimistically show user's query as pending
+    setCurrentQuery('');     // Clear input field immediately
 
     const formData = new FormData();
     formData.append('query', query);
@@ -140,7 +142,7 @@ export function Chatbot() {
       }));
 
     formData.append('chatHistory', JSON.stringify(flowHistory));
-    formAction(formData);
+    formAction(formData); // Dispatch the server action
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -188,6 +190,7 @@ export function Chatbot() {
               {msg.role === 'user' && <User className="w-6 h-6 text-muted-foreground self-start shrink-0" />}
             </div>
           ))}
+           {/* Optimistic UI for pending user message */}
            {isChatPending && submittedQuery && ( 
              <div className="flex items-end gap-2 justify-end">
                 <div className="max-w-[75%] rounded-lg px-4 py-2 text-sm bg-primary text-primary-foreground opacity-70">
@@ -207,7 +210,7 @@ export function Chatbot() {
                       variant="outline" 
                       size="sm" 
                       onClick={() => handleQuickQuestion(q)} 
-                      disabled={isChatPending}
+                      disabled={isChatPending || !!submittedQuery} // Disable if any query is pending
                       suppressHydrationWarning 
                     >
                         {q}
@@ -218,16 +221,16 @@ export function Chatbot() {
 
         <form onSubmit={handleSubmit} ref={formRef} className="flex items-center gap-2 pt-4">
           <Input
-            name="query" // Name attribute is good for non-JS form submission, but here we control it.
+            name="query"
             placeholder="Type your question..."
             value={currentQuery}
             onChange={(e) => setCurrentQuery(e.target.value)}
             className="flex-grow"
-            disabled={isChatPending}
+            disabled={isChatPending || !!submittedQuery} // Disable if any query is pending
             autoComplete="off"
             suppressHydrationWarning 
           />
-          <ChatSubmitButton />
+          <ChatSubmitButton /> {/* Already has suppressHydrationWarning */}
         </form>
       </CardContent>
     </Card>

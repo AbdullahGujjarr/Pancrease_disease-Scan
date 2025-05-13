@@ -17,7 +17,7 @@ interface ImageUploadFormProps {
   formAction: (prevState: AnalysisFormState | null, formData: FormData) => Promise<AnalysisFormState>; 
   onAnalysisStart: () => void;
   onAnalysisComplete: (data: AnalysisFormState) => void; 
-  allowNewUpload: boolean;
+  allowNewUpload: boolean; // This prop seems to control if the form is for a new upload or showing "Analyze Another"
   onReset: () => void;
 }
 
@@ -27,35 +27,24 @@ const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png'];
 
 interface SubmitButtonProps {
   allowNewUpload: boolean;
-  onReset: () => void;
-  onAnalysisStart: () => void;
-  disableSubmit: boolean;
+  onReset: () => void; // Used when allowNewUpload is true
+  // onAnalysisStart is implicitly handled by useFormStatus for the main submit
+  disableSubmit: boolean; // Used when allowNewUpload is false
 }
 
 function SubmitButton({
   allowNewUpload,
   onReset,
-  onAnalysisStart,
   disableSubmit,
 }: SubmitButtonProps) {
   const { pending } = useFormStatus();
-  const prevPendingRef = useRef(pending);
+  // onAnalysisStart is called by the parent component when formAction is invoked.
 
-  useEffect(() => {
-    if (pending && !prevPendingRef.current) {
-      // Only call onAnalysisStart if this is the main analysis submission
-      if (!allowNewUpload) {
-        onAnalysisStart();
-      }
-    }
-    prevPendingRef.current = pending;
-  }, [pending, onAnalysisStart, allowNewUpload]);
-
-  if (allowNewUpload) {
+  if (allowNewUpload) { // This button appears when results are shown, to start a new analysis
     return (
       <Button
-        type="button" // Not a submit button for the form action
-        onClick={onReset}
+        type="button" 
+        onClick={onReset} // This resets the page state for a new upload
         variant="outline"
         className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
         suppressHydrationWarning
@@ -65,12 +54,13 @@ function SubmitButton({
     );
   }
 
+  // This is the main submit button for the initial analysis
   return (
     <Button
       type="submit"
       disabled={pending || disableSubmit}
       className="w-full bg-primary hover:bg-primary/80 text-primary-foreground"
-      suppressHydrationWarning
+      suppressHydrationWarning // Added for potential browser extension interference
     >
       {pending ? (
         <>
@@ -92,12 +82,15 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
   const [uploadProgress, setUploadProgress] = useState(0); 
 
   const { toast } = useToast();
+  const formRef = useRef<HTMLFormElement>(null);
 
+  // `state` is the result from the server action, `dispatch` calls the action
   const [state, dispatch] = useActionState(formAction, null); 
 
+  // Effect to handle server action completion
   useEffect(() => {
-    if (state) {
-      onAnalysisComplete(state);
+    if (state) { // state will be null initially, then populated after action
+      onAnalysisComplete(state); // Pass the full state (data, error, message) to parent
       if (state.error) {
         toast({
           title: 'Analysis Error',
@@ -105,12 +98,13 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
           variant: 'destructive',
         });
       }
-      // Success messages are handled by the parent page.tsx for consistency
+      // Success messages (state.message) are handled by the parent page.tsx
     }
   }, [state, toast, onAnalysisComplete]);
 
 
   const handleFileChange = (file: File | null) => {
+    // This function should only run if we are in the initial upload phase, not when "Analyze Another" is shown
     if (allowNewUpload) return; 
 
     setFileError(null);
@@ -141,7 +135,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
       
       reader.onloadend = () => {
         setPreview(reader.result as string);
-        setDataUri(reader.result as string);
+        setDataUri(reader.result as string); // This will be submitted
         setUploadProgress(100);
       };
       reader.onerror = () => {
@@ -160,22 +154,25 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
+    if (allowNewUpload) return;
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFileChange(e.dataTransfer.files[0]);
     }
-  }, [allowNewUpload]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allowNewUpload]); // Added allowNewUpload to dependencies
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    if (allowNewUpload) return;
     setIsDragging(true);
-  }, []);
+  }, [allowNewUpload]); // Added allowNewUpload
 
   const onDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    if (allowNewUpload) return;
     setIsDragging(false);
-  }, []);
+  }, [allowNewUpload]); // Added allowNewUpload
 
   const removePreview = () => {
     setPreview(null);
@@ -183,12 +180,31 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
     setDataUri(null);
     setFileError(null);
     setUploadProgress(0);
-    const fileInput = document.getElementById('scanFile') as HTMLInputElement;
-    if (fileInput) fileInput.value = '';
+    if (formRef.current) {
+        // Reset visual file input if direct DOM manipulation is necessary,
+        // though ideally state drives this.
+        const fileInput = formRef.current.querySelector('input[type="file"]') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+    }
   };
   
-  // The form's action prop will now handle submission via `dispatch`
-  // The custom handleSubmit is no longer needed for form submission itself.
+  const handleSubmit = (formData: FormData) => {
+    if (!dataUri && !allowNewUpload) {
+      setFileError("Please select an image file to analyze.");
+      return;
+    }
+    if (allowNewUpload) { // This case should be handled by the "Analyze Another" button's onReset
+        return;
+    }
+    
+    // Ensure dataUri is added to formData if it's not already (it should be via hidden input)
+    if (dataUri && !formData.has('scanDataUri')) {
+        formData.append('scanDataUri', dataUri);
+    }
+    
+    onAnalysisStart(); // Signal parent that analysis is starting
+    dispatch(formData); // Call the server action
+  };
 
   return (
     <Card className="w-full max-w-lg mx-auto shadow-xl">
@@ -201,11 +217,12 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={dispatch} className="space-y-6">
-          {/* Hidden input to pass dataUri with FormData */}
+        {/* The form's action prop now correctly uses the dispatch from useActionState */}
+        <form action={handleSubmit} ref={formRef} className="space-y-6">
+          {/* Hidden input to pass dataUri with FormData. It's crucial this is inside the form. */}
           {dataUri && <input type="hidden" name="scanDataUri" value={dataUri} />}
 
-          {!preview && !allowNewUpload && (
+          {!preview && !allowNewUpload && ( // Only show upload area if no preview and not in "results" state (allowNewUpload=false)
             <div
               onDrop={onDrop}
               onDragOver={onDragOver}
@@ -215,11 +232,12 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
                 transition-colors duration-200 ease-in-out`}
             >
               <UploadCloud className={`w-12 h-12 mb-3 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-              <Label htmlFor="scanFile" className="text-center">
+              <Label htmlFor="scanFileVisualInput" className="text-center">
                 <span className="font-semibold text-primary">Click to upload</span> or drag and drop
                 <p className="text-xs text-muted-foreground mt-1">JPG, PNG (MAX. {MAX_FILE_SIZE_MB}MB)</p>
               </Label>
-              <Input id="scanFile" name="scanFileVisual" type="file" className="hidden" onChange={onFileInputChange} accept={ALLOWED_FILE_TYPES.join(',')} />
+              {/* This input is for user interaction; its value isn't directly submitted if dataUri is used. */}
+              <Input id="scanFileVisualInput" name="scanFileVisual" type="file" className="hidden" onChange={onFileInputChange} accept={ALLOWED_FILE_TYPES.join(',')} />
             </div>
           )}
 
@@ -230,7 +248,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
             </div>
           )}
 
-          {preview && !allowNewUpload && (
+          {preview && !allowNewUpload && ( // Only show preview if there is one and not in "results" state
             <div className="space-y-3">
               <div className="relative group aspect-video w-full rounded-md overflow-hidden border border-muted">
                 <Image src={preview} alt={fileName || "Scan preview"} layout="fill" objectFit="contain" data-ai-hint="medical scan"/>
@@ -241,7 +259,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
                   className="absolute top-2 right-2 bg-background/70 hover:bg-destructive/80 hover:text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={removePreview}
                   aria-label="Remove image"
-                  suppressHydrationWarning
+                  suppressHydrationWarning // Added for potential browser extension interference
                 >
                   <XCircle className="w-5 h-5" />
                 </Button>
@@ -253,15 +271,18 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
               {uploadProgress > 0 && uploadProgress < 100 && (
                  <Progress value={uploadProgress} className="w-full h-2" />
               )}
+               {uploadProgress === 100 && dataUri && (
+                <p className="text-xs text-green-600">Image ready for analysis.</p>
+              )}
             </div>
           )}
           
           <div className="pt-2">
+            {/* SubmitButton's behavior changes based on allowNewUpload */}
             <SubmitButton
               allowNewUpload={allowNewUpload}
-              onReset={onReset}
-              onAnalysisStart={onAnalysisStart}
-              disableSubmit={!dataUri && !allowNewUpload}
+              onReset={onReset} // onReset is for the "Analyze Another" button scenario
+              disableSubmit={!dataUri && !allowNewUpload} // disable main submit if no dataUri
             />
           </div>
         </form>
@@ -269,4 +290,3 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
     </Card>
   );
 }
-
