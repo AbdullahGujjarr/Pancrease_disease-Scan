@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, type ChangeEvent, type DragEvent } from 'react';
+import { useState, useCallback, useEffect, type ChangeEvent, type DragEvent, useRef } from 'react';
 import { useActionState } from 'react'; 
 import { useFormStatus } from 'react-dom';
 import Image from 'next/image';
@@ -25,17 +25,40 @@ const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png'];
 
-function SubmitButton({ allowNewUpload, onReset }: { allowNewUpload: boolean; onReset: () => void }) {
+interface SubmitButtonProps {
+  allowNewUpload: boolean;
+  onReset: () => void;
+  onAnalysisStart: () => void;
+  disableSubmit: boolean;
+}
+
+function SubmitButton({
+  allowNewUpload,
+  onReset,
+  onAnalysisStart,
+  disableSubmit,
+}: SubmitButtonProps) {
   const { pending } = useFormStatus();
+  const prevPendingRef = useRef(pending);
+
+  useEffect(() => {
+    if (pending && !prevPendingRef.current) {
+      // Only call onAnalysisStart if this is the main analysis submission
+      if (!allowNewUpload) {
+        onAnalysisStart();
+      }
+    }
+    prevPendingRef.current = pending;
+  }, [pending, onAnalysisStart, allowNewUpload]);
 
   if (allowNewUpload) {
     return (
-      <Button 
-        type="button" 
-        onClick={onReset} 
-        variant="outline" 
+      <Button
+        type="button" // Not a submit button for the form action
+        onClick={onReset}
+        variant="outline"
         className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
-        suppressHydrationWarning // Added to prevent hydration mismatch
+        suppressHydrationWarning
       >
         <RefreshCcw className="mr-2 h-4 w-4" /> Analyze Another Image
       </Button>
@@ -43,11 +66,11 @@ function SubmitButton({ allowNewUpload, onReset }: { allowNewUpload: boolean; on
   }
 
   return (
-    <Button 
-      type="submit" 
-      disabled={pending} 
+    <Button
+      type="submit"
+      disabled={pending || disableSubmit}
       className="w-full bg-primary hover:bg-primary/80 text-primary-foreground"
-      suppressHydrationWarning // Added to prevent hydration mismatch
+      suppressHydrationWarning
     >
       {pending ? (
         <>
@@ -81,9 +104,8 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
           description: state.error,
           variant: 'destructive',
         });
-      } else if (state.message) {
-         // Success message handled by parent page.tsx
       }
+      // Success messages are handled by the parent page.tsx for consistency
     }
   }, [state, toast, onAnalysisComplete]);
 
@@ -141,7 +163,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFileChange(e.dataTransfer.files[0]);
     }
-  }, [allowNewUpload]); 
+  }, [allowNewUpload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -164,18 +186,9 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
     const fileInput = document.getElementById('scanFile') as HTMLInputElement;
     if (fileInput) fileInput.value = '';
   };
-
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!dataUri || allowNewUpload) {
-      if(!allowNewUpload) setFileError('Please select an image file.');
-      return;
-    }
-    onAnalysisStart();
-    const formData = new FormData();
-    formData.append('scanDataUri', dataUri);
-    dispatch(formData);
-  };
+  
+  // The form's action prop will now handle submission via `dispatch`
+  // The custom handleSubmit is no longer needed for form submission itself.
 
   return (
     <Card className="w-full max-w-lg mx-auto shadow-xl">
@@ -188,7 +201,10 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form action={dispatch} className="space-y-6">
+          {/* Hidden input to pass dataUri with FormData */}
+          {dataUri && <input type="hidden" name="scanDataUri" value={dataUri} />}
+
           {!preview && !allowNewUpload && (
             <div
               onDrop={onDrop}
@@ -203,7 +219,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
                 <span className="font-semibold text-primary">Click to upload</span> or drag and drop
                 <p className="text-xs text-muted-foreground mt-1">JPG, PNG (MAX. {MAX_FILE_SIZE_MB}MB)</p>
               </Label>
-              <Input id="scanFile" type="file" className="hidden" onChange={onFileInputChange} accept={ALLOWED_FILE_TYPES.join(',')} />
+              <Input id="scanFile" name="scanFileVisual" type="file" className="hidden" onChange={onFileInputChange} accept={ALLOWED_FILE_TYPES.join(',')} />
             </div>
           )}
 
@@ -225,7 +241,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
                   className="absolute top-2 right-2 bg-background/70 hover:bg-destructive/80 hover:text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={removePreview}
                   aria-label="Remove image"
-                  suppressHydrationWarning // Added to prevent hydration mismatch
+                  suppressHydrationWarning
                 >
                   <XCircle className="w-5 h-5" />
                 </Button>
@@ -241,10 +257,16 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
           )}
           
           <div className="pt-2">
-            <SubmitButton allowNewUpload={allowNewUpload} onReset={onReset} />
+            <SubmitButton
+              allowNewUpload={allowNewUpload}
+              onReset={onReset}
+              onAnalysisStart={onAnalysisStart}
+              disableSubmit={!dataUri && !allowNewUpload}
+            />
           </div>
         </form>
       </CardContent>
     </Card>
   );
 }
+
