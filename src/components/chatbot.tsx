@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Bot, Loader2, Send, Sparkles, User } from 'lucide-react';
-import { useEffect, useRef, useState, type FormEvent, useActionState } from 'react'; // Updated import
+import { useEffect, useRef, useState, type FormEvent, useActionState } from 'react'; 
 import { useFormStatus } from 'react-dom';
 
 interface ChatMessage {
@@ -27,7 +27,13 @@ const quickQuestions = [
 function ChatSubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" size="icon" disabled={pending} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+    <Button 
+      type="submit" 
+      size="icon" 
+      disabled={pending} 
+      className="bg-primary hover:bg-primary/90 text-primary-foreground"
+      suppressHydrationWarning // Added to prevent hydration mismatch
+    >
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
       <span className="sr-only">Send message</span>
     </Button>
@@ -42,17 +48,16 @@ export function Chatbot() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [state, formAction] = useActionState(askPancreasAssistantAction, { // Updated to useActionState
+  const [state, formAction] = useActionState(askPancreasAssistantAction, { 
     response: null,
     error: null,
     userQuery: null,
   });
   
-  const { pending } = useFormStatus();
+  const { pending } = useFormStatus(); // This needs to be used inside a component that's a child of a form
 
   useEffect(() => {
-    if (state?.userQuery && !pending) { // Add user message once submitted and not pending anymore
-        // Check if the last message is already this user query to avoid duplicates on resubmission/error
+    if (state?.userQuery && !pending) { 
         if (chatHistory.length === 0 || chatHistory[chatHistory.length -1].content !== state.userQuery || chatHistory[chatHistory.length -1].role !== 'user') {
              setChatHistory(prev => [...prev, { role: 'user', content: state.userQuery as string }]);
         }
@@ -60,9 +65,6 @@ export function Chatbot() {
 
     if (state?.response) {
       setChatHistory(prev => [...prev, { role: 'assistant', content: state.response as string }]);
-      // Reset form state by clearing userQuery after processing response.
-      // This prevents re-adding user message on next interaction if state.userQuery isn't cleared.
-      // However, useActionState is tricky. Better to clear currentQuery.
       setCurrentQuery(''); 
     }
     if (state?.error) {
@@ -71,10 +73,8 @@ export function Chatbot() {
         description: state.error,
         variant: 'destructive',
       });
-       // If there was an error, we might still want to keep the user's query in the input.
-       // But the user message is already added to chat history.
     }
-  }, [state, pending]); // Depend on state to react to form submission results
+  }, [state, pending, toast, chatHistory]); // Added toast and chatHistory to dependency array for correctness
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -88,26 +88,21 @@ export function Chatbot() {
 
     const formData = new FormData(event.currentTarget);
     
-    // Prepare chat history for the flow
     const flowHistory: PancreasAssistantInput['chatHistory'] = chatHistory
-      .filter(msg => msg.role === 'user' || msg.role === 'assistant') // Filter out system messages if any
+      .filter(msg => msg.role === 'user' || msg.role === 'assistant') 
       .map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'model', // Map to 'user' or 'model'
+        role: msg.role === 'user' ? 'user' : 'model', 
         parts: [{ text: msg.content }]
       }));
 
     formData.append('chatHistory', JSON.stringify(flowHistory));
     formAction(formData);
-    // User message is added to history via useEffect when state.userQuery is set
   };
   
   const handleQuickQuestion = (question: string) => {
     if (pending) return;
     setCurrentQuery(question);
-    // Programmatically submit the form with the new question
-    // Ensure currentQuery is part of formData for this submission.
-    // The form's input field will update due to `value={currentQuery}`.
-    // We then create new FormData and dispatch.
+    
     const formData = new FormData();
     formData.append('query', question);
 
@@ -158,7 +153,7 @@ export function Chatbot() {
               {msg.role === 'user' && <User className="w-6 h-6 text-muted-foreground self-start shrink-0" />}
             </div>
           ))}
-           {pending && state?.userQuery && ( // Optimistically show user message while pending
+           {pending && state?.userQuery && ( 
              <div className="flex items-end gap-2 justify-end">
                 <div className="max-w-[75%] rounded-lg px-4 py-2 text-sm bg-primary text-primary-foreground opacity-70">
                     {state.userQuery}
@@ -172,7 +167,14 @@ export function Chatbot() {
             <p className="text-sm font-medium text-muted-foreground">Or try a quick question:</p>
             <div className="flex flex-wrap gap-2">
                 {quickQuestions.map(q => (
-                    <Button key={q} variant="outline" size="sm" onClick={() => handleQuickQuestion(q)} disabled={pending}>
+                    <Button 
+                      key={q} 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleQuickQuestion(q)} 
+                      disabled={pending}
+                      suppressHydrationWarning // Added to prevent hydration mismatch
+                    >
                         {q}
                     </Button>
                 ))}
@@ -188,6 +190,7 @@ export function Chatbot() {
             className="flex-grow"
             disabled={pending}
             autoComplete="off"
+            suppressHydrationWarning // Added to prevent hydration mismatch
           />
           <ChatSubmitButton />
         </form>

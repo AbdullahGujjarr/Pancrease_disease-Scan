@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, type ChangeEvent, type DragEvent } from 'react';
-import { useActionState } from 'react'; // Updated import
+import { useActionState } from 'react'; 
 import { useFormStatus } from 'react-dom';
 import Image from 'next/image';
 import { UploadCloud, FileImage, XCircle, Loader2, RefreshCcw } from 'lucide-react';
@@ -30,14 +30,25 @@ function SubmitButton({ allowNewUpload, onReset }: { allowNewUpload: boolean; on
 
   if (allowNewUpload) {
     return (
-      <Button type="button" onClick={onReset} variant="outline" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
+      <Button 
+        type="button" 
+        onClick={onReset} 
+        variant="outline" 
+        className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
+        suppressHydrationWarning // Added to prevent hydration mismatch
+      >
         <RefreshCcw className="mr-2 h-4 w-4" /> Analyze Another Image
       </Button>
     );
   }
 
   return (
-    <Button type="submit" disabled={pending} className="w-full bg-primary hover:bg-primary/80 text-primary-foreground">
+    <Button 
+      type="submit" 
+      disabled={pending} 
+      className="w-full bg-primary hover:bg-primary/80 text-primary-foreground"
+      suppressHydrationWarning // Added to prevent hydration mismatch
+    >
       {pending ? (
         <>
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analyzing...
@@ -59,7 +70,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
 
   const { toast } = useToast();
 
-  const [state, dispatch] = useActionState(formAction, null); // Updated to useActionState
+  const [state, dispatch] = useActionState(formAction, null); 
 
   useEffect(() => {
     if (state) {
@@ -130,7 +141,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFileChange(e.dataTransfer.files[0]);
     }
-  }, [allowNewUpload]); // Added allowNewUpload to dependencies
+  }, [allowNewUpload]); 
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -214,6 +225,7 @@ export function ImageUploadForm({ formAction, onAnalysisStart, onAnalysisComplet
                   className="absolute top-2 right-2 bg-background/70 hover:bg-destructive/80 hover:text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={removePreview}
                   aria-label="Remove image"
+                  suppressHydrationWarning // Added to prevent hydration mismatch
                 >
                   <XCircle className="w-5 h-5" />
                 </Button>
