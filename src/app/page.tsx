@@ -1,3 +1,4 @@
+// client';
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -11,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from '@/components/ui/button';
 import { RefreshCcw, Download, AlertTriangle } from 'lucide-react';
 import { generateReportPDF } from '@/lib/pdf-utils';
-import { Chatbot } from '@/components/chatbot'; 
+// Removed Chatbot import: import { Chatbot } from '@/components/chatbot'; 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 
@@ -115,7 +116,7 @@ export default function PancreasVisionPage() {
             onAnalysisStart={handleAnalysisStart}
             onAnalysisComplete={handleAnalysisComplete}
             allowNewUpload={false} 
-            onReset={handleReset} // Pass handleReset for consistency, though not used by this specific form's button
+            onReset={handleReset} 
           />
         )}
         
@@ -150,7 +151,7 @@ export default function PancreasVisionPage() {
           </div>
         )}
 
-        <Chatbot /> 
+        {/* Removed Chatbot component instance: <Chatbot /> */}
 
       </main>
       <Footer />

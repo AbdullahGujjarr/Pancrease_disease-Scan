@@ -1,8 +1,8 @@
-
+// server';
 'use server';
 
 import { analyzePancreasScan, type AnalyzePancreasScanInput, type AnalyzePancreasScanOutput } from '@/ai/flows/analyze-pancreas-scan';
-import { askPancreasAssistant, type PancreasAssistantInput, type PancreasAssistantOutput } from '@/ai/flows/pancreas-chat-flow';
+// Removed chatbot import: import { askPancreasAssistant, type PancreasAssistantInput, type PancreasAssistantOutput } from '@/ai/flows/pancreas-chat-flow';
 import { z } from 'zod';
 
 const PerformImageAnalysisInputSchema = z.object({
@@ -47,7 +47,8 @@ export async function performImageAnalysis(
 }
 
 
-// Chatbot Action
+// Chatbot Action and related code removed
+/*
 const AskPancreasAssistantInputSchema = z.object({
   query: z.string().min(1, "Query cannot be empty."),
   chatHistory: z.string().optional(), // JSON string of chat history
@@ -101,3 +102,4 @@ export async function askPancreasAssistantAction(
     return { response: null, error: errorMessage, userQuery: validatedFields.data.query };
   }
 }
+*/
