@@ -1,3 +1,5 @@
+'use client';
+
 import { Stethoscope, Activity, ShieldAlert, Ribbon, Info, ScanLine, HelpCircle, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation'; // Import usePathname
@@ -9,8 +11,8 @@ const navItems = [
   { href: '/chronic-pancreatitis', label: 'Chronic Pancreatitis', icon: Activity },
   { href: '/pancreatic-cysts', label: 'Pancreatic Cysts', icon: Info },
   { href: '/acute-pancreatitis', label: 'Acute Pancreatitis', icon: ShieldAlert },
-  { href: '/prevention', label: 'Prevention', icon: ShieldCheck }, // Changed icon
-  { href: '/information-center', label: 'Help & FAQ', icon: HelpCircle }, // New page
+  { href: '/prevention', label: 'Prevention', icon: ShieldCheck },
+  { href: '/information-center', label: 'Help & FAQ', icon: HelpCircle },
 ];
 
 export function Header() {
